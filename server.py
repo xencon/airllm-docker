@@ -1,12 +1,20 @@
 # server.py
+import json
+import logging
+import os
+import torch
+from threading import Thread
+from typing import List, Optional, Union
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TextIteratorStreamer
-from threading import Thread
-import logging
-import os
+from transformers import (
+    AutoTokenizer, 
+    AutoModelForCausalLM, 
+    BitsAndBytesConfig, 
+    TextIteratorStreamer
+)
 
 # ----------------------------
 # Logging
@@ -20,12 +28,18 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # ----------------------------
-# Request/Response Models
+# OpenAI-Compatible Models
 # ----------------------------
-class GenerateRequest(BaseModel):
-    prompt: str
-    max_length: int = 100
-    temperature: float = 0.7
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[ChatMessage]
+    max_tokens: Optional[int] = 512
+    temperature: Optional[float] = 0.7
+    stream: Optional[bool] = False
 
 # ----------------------------
 # Model Initialization
@@ -42,11 +56,10 @@ try:
         bnb_4bit_quant_type="nf4",
     )
 
-    # Load tokenizer from local folder
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
 
-    # Load model with device_map="auto"
-    # Note: model.to(device) is REMOVED because it conflicts with bitsandbytes/accelerate
+    # Note: AirLLM logic typically uses AutoModelForCausalLM with device_map="auto"
+    # to handle the layer-sharding across disk/RAM/VRAM.
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_PATH,
         quantization_config=bnb_config,
@@ -63,95 +76,90 @@ except Exception as e:
     model = None
 
 # ----------------------------
-# Root & Health Endpoints
+# OpenAI Chat Completion Endpoint
 # ----------------------------
-@app.get("/")
-async def root():
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatCompletionRequest):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    # Extract prompt from the last user message
+    user_prompt = request.messages[-1].content
+    inputs = tokenizer(user_prompt, return_tensors="pt").to(model.device)
+
+    if request.stream:
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        generation_kwargs = dict(
+            **inputs,
+            streamer=streamer,
+            max_new_tokens=request.max_tokens,
+            do_sample=True,
+            temperature=request.temperature,
+        )
+
+        thread = Thread(target=model.generate, kwargs=generation_kwargs)
+        thread.start()
+
+        def openai_stream_generator():
+            for new_text in streamer:
+                # Format each chunk as a Server-Sent Event (SSE) for OpenAI compatibility
+                chunk = {
+                    "id": "chatcmpl-local",
+                    "object": "chat.completion.chunk",
+                    "created": 1234567,
+                    "model": request.model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"content": new_text},
+                        "finish_reason": None
+                    }]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(openai_stream_generator(), media_type="text/event-stream")
+
+    else:
+        # Non-streaming logic
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs, 
+                max_new_tokens=request.max_tokens,
+                temperature=request.temperature
+            )
+        
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Strip the prompt if the model returns it
+        response_content = generated_text.replace(user_prompt, "").strip()
+
+        return {
+            "id": "chatcmpl-local",
+            "object": "chat.completion",
+            "created": 1234567,
+            "model": request.model,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": response_content},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        }
+
+# ----------------------------
+# Health Endpoints
+# ----------------------------
+@app.get("/v1/models")
+async def list_models():
     return {
-        "message": "Coding LLM Server is running",
-        "model": MODEL_PATH,
-        "status": "loaded" if model else "not loaded"
+        "object": "list",
+        "data": [{"id": "local-model", "object": "model", "owned_by": "organization-owner"}]
     }
 
 @app.get("/health")
 async def health():
-    if model is None:
-        return {"status": "degraded", "model": "not loaded"}
-    return {"status": "healthy", "model": MODEL_PATH}
+    return {"status": "healthy" if model else "not loaded"}
 
-# ----------------------------
-# Streaming Generation Endpoint
-# ----------------------------
-@app.post("/generate/stream")
-async def generate_stream(request: GenerateRequest):
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    try:
-        # Move inputs to the same device as the model's first layer
-        inputs = tokenizer(request.prompt, return_tensors="pt").to(model.device)
-        
-        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-        # Generation kwargs
-        generation_kwargs = dict(
-            **inputs,
-            streamer=streamer,
-            max_new_tokens=request.max_length,
-            do_sample=True,
-            temperature=request.temperature,
-            top_p=0.95,
-        )
-
-        # Run generation in a separate thread
-        thread = Thread(target=model.generate, kwargs=generation_kwargs)
-        thread.start()
-
-        def token_generator():
-            for new_text in streamer:
-                yield new_text
-
-        return StreamingResponse(token_generator(), media_type="text/plain")
-
-    except Exception as e:
-        logger.error(f"Streaming generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ----------------------------
-# Non-streaming Generation Endpoint
-# ----------------------------
-@app.post("/generate")
-async def generate(request: GenerateRequest):
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    try:
-        inputs = tokenizer(request.prompt, return_tensors="pt").to(model.device)
-
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=request.max_length,
-                do_sample=True,
-                temperature=request.temperature,
-                top_p=0.95,
-            )
-
-        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return {"generated_text": generated_text, "model": MODEL_PATH}
-
-    except Exception as e:
-        logger.error(f"Generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ----------------------------
-# Model Info Endpoint
-# ----------------------------
-@app.get("/model/info")
-async def model_info():
-    return {
-        "model": MODEL_PATH,
-        "pytorch_version": torch.__version__,
-        "cuda_available": torch.cuda.is_available(),
-        "device": str(model.device) if model else "N/A"
-    }
+if __name__ == "__main__":
+    import uvicorn
+    # Important: host 0.0.0.0 is required for Docker access
+    uvicorn.run(app, host="0.0.0.0", port=11434)
