@@ -1,19 +1,14 @@
-# We use the devel image because FlashAttention/AirLLM often require 
-# a CUDA compiler (nvcc) to install correctly.
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+# --- STAGE 1: BUILDER ---
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
 
-# Set working directory
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies needed for Python and CUDA builds
+# Install system dependencies needed for compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 python3-pip python3-dev build-essential ninja-build git \
     && rm -rf /var/lib/apt/lists/*
 
-# -----------------------------
-# Clean Python environment and install dependencies
-# -----------------------------
-# Note: We keep your specific versions but ensure they are built for the current CUDA
+# Install build-time dependencies
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir \
     torch==2.4.0 \
@@ -26,31 +21,43 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
     uvloop \
     airllm
 
-# OPTIMIZATION: Install FlashAttention-2
-# This is a 'soft' fail: if your GPU doesn't support it, the model will 
-# gracefully fall back to standard attention.
-RUN pip3 install flash-attn --no-build-isolation || true
+# OPTIMIZATION: Build Flash-Attention 2
+# We set MAX_JOBS to prevent the laptop from freezing during the heavy compile
+RUN MAX_JOBS=4 pip3 install flash-attn --no-build-isolation || true
 
-# -----------------------------
-# Copy application
-# -----------------------------
-# Create non-root user
-RUN useradd -m -u 1000 appuser
+# --- STAGE 2: RUNTIME ---
+# We switch to 'runtime' which is much smaller and safer
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
-# Ensure the models directory exists and appuser owns it
-# AirLLM MUST be able to write sharded layers to this folder
-RUN mkdir -p /app/models && chown -R appuser:appuser /app
+WORKDIR /app
 
+# Install minimal runtime python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the entire python environment from the builder
+COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Setup User and Permissions
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/models && \
+    chown -R appuser:appuser /app
+
+# Copy Application Files
 COPY --chown=appuser:appuser server.py /app/
-# config.json is optional but good to have if you are overriding defaults
-COPY --chown=appuser:appuser config.json* /app/ 
+COPY --chown=appuser:appuser config.json* /app/
 
-# Switch to non-root user
+# Environment Optimizations
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    # AirLLM works best when it can utilize multiple CPU threads for layer pre-fetching
+    OMP_NUM_THREADS=8 
+
 USER appuser
-
-# Expose server port
 EXPOSE 11434
 
-# Start FastAPI server with uvloop for higher performance
-# The --loop uvloop flag tells uvicorn to use the high-speed event loop
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "11434", "--loop", "uvloop"]
+# Use the standard loop for uvicorn which triggers uvloop automatically 
+# when installed via uvicorn[standard]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "11434", "--loop", "uvloop", "--http", "httptools"]
