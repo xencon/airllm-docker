@@ -106,7 +106,7 @@ async def inference_worker():
             
         except Exception as e:
             logger.error(f"Inference Error: {e}")
-            await response_queue.put(None)
+            await response_queue.put(e)
         finally:
             request_queue.task_done()
 
@@ -123,6 +123,9 @@ async def chat_completions(request: ChatCompletionRequest):
         while True:
             token = await token_queue.get()
             if token is None:
+                break
+            if isinstance(token, Exception):
+                yield f"data: {json.dumps({'error': str(token)})}\n\n"
                 break
             
             # Wrap token in OpenAI-style JSON for Markdown rendering
