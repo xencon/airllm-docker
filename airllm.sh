@@ -7,7 +7,7 @@ IMAGE_NAME="airllm-local"
 CONTAINER_NAME="airllm-server"
 HOST_PORT=11434
 CONTAINER_PORT=11434
-MODEL_DIR="$(pwd)/models"  # local models folder
+MODEL_DIR="${MODEL_DIR:-$(pwd)/models}"  # use environment variable if set, otherwise default to local
 # --------------------------
 
 # Function to stop and remove container
