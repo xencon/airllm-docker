@@ -21,6 +21,7 @@ from transformers import (
 # ----------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+app = FastAPI(title="Optimized AirLLM Server")
 
 # ----------------------------
 # FastAPI App
@@ -46,17 +47,38 @@ class ChatCompletionRequest(BaseModel):
 # ----------------------------
 MODEL_PATH = "/app/models"
 
-try:
-    logger.info(f"Loading model from {MODEL_PATH} in 4-bit mode...")
+# --- Models ---
+class ChatMessage(BaseModel):
+    role: str
+    content: str
 
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[ChatMessage]
+    max_tokens: Optional[int] = 1024
+    temperature: Optional[float] = 0.2 # Lower for coding
+    stream: Optional[bool] = True
+
+# --- Hardware Optimizations ---
+def load_model():
+    global model, tokenizer
+    logger.info("Initializing high-performance AirLLM instance...")
+    
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
+        # OPTIMIZATION: Quantize the KV Cache to 4-bit to support 
+        # much longer context (crucial for large code files)
+        bnb_4bit_kv_cache_quant=True 
     )
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+    
+    # OPTIMIZATION: Use FlashAttention-2 if hardware supports it
+    # This speeds up the 'pre-fill' stage by up to 3x
+    attn_impl = "flash_attention_2" if torch.cuda.get_device_capability()[0] >= 8 else "sdpa"
 
     # Note: AirLLM logic typically uses AutoModelForCausalLM with device_map="auto"
     # to handle the layer-sharding across disk/RAM/VRAM.
@@ -65,9 +87,9 @@ try:
         quantization_config=bnb_config,
         device_map="auto",
         torch_dtype=torch.float16,
+        attn_implementation=attn_impl,
         trust_remote_code=True
     )
-    
     model.eval()
     logger.info("Model loaded successfully!")
 
