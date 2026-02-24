@@ -75,11 +75,16 @@ async def inference_worker():
             
         request_data, response_queue = item
         try:
-            # Extract the last message content
-            user_prompt = request_data.messages[-1].content
+            # Pass all messages to retain Continue CLI context (e.g. file contents)
+            messages = [{"role": m.role, "content": m.content} for m in request_data.messages]
             
             # Prepare inputs
-            inputs = tokenizer(user_prompt, return_tensors="pt").to(model.device)
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt"
+            ).to(model.device)
             streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
             generation_kwargs = dict(
