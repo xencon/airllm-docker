@@ -1,0 +1,17 @@
+# Core model libraries
+torch>=2.4.0
+transformers>=4.41.2
+accelerate>=0.32.1
+optimum>=1.19.2
+bitsandbytes>=0.43.1
+safetensors>=0.7.0
+huggingface-hub>=0.23.0
+scipy>=1.11.4
+
+# FastAPI server dependencies
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.4.0
+
+# Optional: git for HF hub installs
+gitpython>=3.1.36
