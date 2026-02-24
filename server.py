@@ -95,12 +95,25 @@ async def inference_worker():
                 temperature=request_data.temperature,
             )
 
+            def _generate_with_error_handling(**kwargs):
+                try:
+                    model.generate(**kwargs)
+                except Exception as e:
+                    import asyncio
+                    # The asyncio queue is not directly thread-safe, so we use call_soon_threadsafe
+                    # however response_queue here is an asyncio.Queue, but we can't await in sync thread.
+                    # Since TextIteratorStreamer is thread-safe via its own queue, we can just put the exception there.
+                    streamer.text_queue.put(e)
+
             # Start generation in a background thread
-            thread = Thread(target=model.generate, kwargs=generation_kwargs)
+            thread = Thread(target=_generate_with_error_handling, kwargs=generation_kwargs)
             thread.start()
 
             # Iterate over the streamer and push to the local response queue
             for new_text in streamer:
+                # TextIteratorStreamer will give us the exception object directly via loop if we injected it
+                if isinstance(new_text, Exception):
+                    raise new_text
                 if new_text:
                     await response_queue.put(new_text)
                 # Yield to the event loop to ensure tokens are sent immediately
