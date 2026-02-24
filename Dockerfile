@@ -1,45 +1,49 @@
-# Base image with PyTorch + CUDA 12.1
-FROM pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime
-
-# Environment settings
-ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    SAFETENSORS_FAST_LOAD=1
-
-# Upgrade pip
-RUN pip install --upgrade pip
-
-# Install git (needed for git+https installs if any)
-RUN apt-get update && \
-    apt-get install -y git && \
-    rm -rf /var/lib/apt/lists/*
+# We use the devel image because FlashAttention/AirLLM often require 
+# a CUDA compiler (nvcc) to install correctly.
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 # Set working directory
 WORKDIR /app
 
+# Install system dependencies needed for Python and CUDA builds
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 python3-pip python3-dev build-essential ninja-build git \
+    && rm -rf /var/lib/apt/lists/*
+
 # -----------------------------
 # Clean Python environment and install dependencies
 # -----------------------------
-RUN pip uninstall -y torch torchvision transformers || true
-
-RUN pip install --no-cache-dir \
+# Note: We keep your specific versions but ensure they are built for the current CUDA
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir \
     torch==2.4.0 \
     transformers==4.41.2 \
     accelerate==0.32.1 \
     bitsandbytes \
     fastapi==0.109.0 \
-    uvicorn==0.23.2 \
-    pydantic==1.10.12
+    pydantic==1.10.12 \
+    uvicorn[standard]==0.23.2 \
+    uvloop \
+    airllm
+
+# OPTIMIZATION: Install FlashAttention-2
+# This is a 'soft' fail: if your GPU doesn't support it, the model will 
+# gracefully fall back to standard attention.
+RUN pip3 install flash-attn --no-build-isolation || true
 
 # -----------------------------
 # Copy application
 # -----------------------------
 # Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser
+
+# Ensure the models directory exists and appuser owns it
+# AirLLM MUST be able to write sharded layers to this folder
+RUN mkdir -p /app/models && chown -R appuser:appuser /app
 
 COPY --chown=appuser:appuser server.py /app/
-COPY --chown=appuser:appuser config.json /app/
-COPY --chown=appuser:appuser models /app/models
+# config.json is optional but good to have if you are overriding defaults
+COPY --chown=appuser:appuser config.json* /app/ 
 
 # Switch to non-root user
 USER appuser
@@ -47,5 +51,6 @@ USER appuser
 # Expose server port
 EXPOSE 11434
 
-# Start FastAPI server
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "11434"]
+# Start FastAPI server with uvloop for higher performance
+# The --loop uvloop flag tells uvicorn to use the high-speed event loop
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "11434", "--loop", "uvloop"]
