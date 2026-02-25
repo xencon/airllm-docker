@@ -45,6 +45,9 @@ RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/models && \
     chown -R appuser:appuser /app
 
+# Expose the models directory as a volume to bypass UnionFS for native NVMe performance
+VOLUME ["/app/models"]
+
 # Copy Application Files
 COPY --chown=appuser:appuser server.py /app/
 COPY --chown=appuser:appuser config.json* /app/
@@ -52,6 +55,7 @@ COPY --chown=appuser:appuser config.json* /app/
 # Environment Optimizations
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    HF_HOME=/app/models/cache \
     # AirLLM works best when it can utilize multiple CPU threads for layer pre-fetching
     OMP_NUM_THREADS=8 
 
