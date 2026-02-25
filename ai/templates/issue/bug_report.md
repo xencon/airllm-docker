@@ -2,8 +2,8 @@
 name: "Bug Report"
 about: "Report an unexpected behavior or problem"
 title: "[BUG] "
-labels: ["component:unknown","priority:medium","profile:dev"]
-assignees: ["<YOUR_GITHUB_USERNAME>"]
+labels: ["priority:medium","profile:dev"]
+assignees: ["sbadakhc"]
 ---
 
 ## Bug Summary

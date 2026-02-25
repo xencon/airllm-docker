@@ -2,8 +2,8 @@
 name: "Feature Request"
 about: "Suggest a new feature or enhancement"
 title: "[FEATURE] "
-labels: ["component:unknown","enhancement"]
-assignees: ["<YOUR_GITHUB_USERNAME>"]
+labels: ["enhancement"]
+assignees: ["sbadakhc"]
 ---
 
 ## Feature Overview

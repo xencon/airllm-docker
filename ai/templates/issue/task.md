@@ -2,8 +2,8 @@
 name: "Task / Investigation"
 about: "Capture a task or investigation work"
 title: "[TASK] "
-labels: ["component:unknown","maintenance"]
-assignees: ["<YOUR_GITHUB_USERNAME>"]
+labels: ["maintenance"]
+assignees: ["sbadakhc"]
 ---
 
 ## Task Summary
