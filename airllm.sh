@@ -7,7 +7,15 @@ IMAGE_NAME="airllm-local"
 CONTAINER_NAME="airllm-server"
 HOST_PORT=11434
 CONTAINER_PORT=11434
-MODEL_DIR="${MODEL_DIR:-$(pwd)/models}"  # use environment variable if set, otherwise default to local
+
+# Check for NVMe RAM Volume
+if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
+    echo "⚡ NVMe RAM drive detected and populated! Using /mnt/nvme_ram for models."
+    MODEL_DIR="/mnt/nvme_ram"
+else
+    echo "🐢 Using standard local models folder."
+    MODEL_DIR="$(pwd)/models"  # local models folder
+fi
 # --------------------------
 
 # Function to stop and remove container
