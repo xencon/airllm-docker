@@ -8,6 +8,7 @@ All changes must follow Issue-First Development.
 - No PR without linked issue
 - No branch without issue number
 - Conventional commit format required
+- Issue and PR titles must use uppercase type in brackets: `[TYPE] Description` (e.g., `[TASK]`, `[BUG]`, `[FEATURE]`)
 - PR must reference issue
 - Matching labels between Issue and PR
 - Plain text formatting only (ASCII, markdown checkboxes)
