@@ -1,6 +1,8 @@
 # AirLLM Docker Setup
 
-A complete Dockerized environment for running AirLLM, optimized for running massive Large Language Models (LLMs) on single GPUs using layer swapping, 4-bit quantization, and NVMe optimization. This repository is specifically tailored to run on consumer hardware while providing a seamless, OpenAI-compatible streaming API.
+A complete Dockerized environment for running AirLLM, optimized for running massive Large Language Models (LLMs) on single GPUs using layer swapping, 4-bit quantization, and NVMe optimization.
+
+This repository is specifically tailored to run on consumer hardware while providing a seamless, OpenAI-compatible streaming API.
 
 ## Features
 
@@ -31,12 +33,16 @@ If you have a dedicated drive available (e.g., `/dev/nvme0n1` or `/dev/sde`), yo
 ```bash
 # Wipe any existing filesystem signatures
 sudo wipefs -a <your_nvme_device>
+
 # Format the drive
 sudo mkfs.ext4 -F <your_nvme_device>
+
 # Create mount point
 sudo mkdir -p /mnt/nvme_ram
+
 # Mount the drive
 sudo mount -o noatime <your_nvme_device> /mnt/nvme_ram
+
 # Set permissions
 sudo chown -R $USER:$USER /mnt/nvme_ram
 sudo chmod -R 755 /mnt/nvme_ram
