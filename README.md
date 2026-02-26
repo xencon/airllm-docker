@@ -75,32 +75,6 @@ This will build the Docker image (if not already built) and run the container on
 ./airllm.sh logs
 ```
 
-## API Endpoint & Testing
-
-The local server exposes an OpenAI-compatible endpoint at `http://localhost:11434/v1/chat/completions`.
-
-You can quickly test the streaming API using the included Python client:
-```bash
-python3 client.py
-```
-
-Alternatively, test using `curl`:
-```bash
-curl -X POST http://localhost:11434/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "qwen2.5-coder-7b",
-    "messages": [
-      {
-        "role": "user",
-        "content": "Write a Python function to sort a list of integers."
-      }
-    ],
-    "stream": true,
-    "temperature": 0.2
-  }'
-```
-
 ## Continue CLI Integration
 
 This server is specifically designed to be fully compatible with the [Continue CLI](https://continue.dev/docs/reference/Model%20Providers/openai) as an OpenAI-compatible custom provider.
