@@ -19,7 +19,15 @@ from transformers import (
 # --- Logging & Configuration ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-app = FastAPI(title="AirLLM NVMe Optimized Server")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load the model and launch the inference worker on startup."""
+    load_model()
+    asyncio.create_task(inference_worker())
+    yield
+
+app = FastAPI(title="AirLLM NVMe Optimized Server", lifespan=lifespan)
 
 # --- Global State ---
 request_queue = asyncio.Queue()
@@ -183,11 +191,18 @@ async def chat_completions(request: ChatCompletionRequest):
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
-@app.on_event("startup")
-async def startup_event():
-    load_model()
-    # Launch the persistent worker task
-    asyncio.create_task(inference_worker())
+@app.get("/v1/models")
+async def list_models():
+    """OpenAI-compatible models list stub."""
+    model_id = MODEL_PATH if MODEL_PATH != "/app/models" else "local-model"
+    return {
+        "object": "list",
+        "data": [{
+            "id": model_id,
+            "object": "model",
+            "owned_by": "airllm",
+        }]
+    }
 
 if __name__ == "__main__":
     import uvicorn
