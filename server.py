@@ -1,8 +1,9 @@
 import json
+import os
 import logging
 import asyncio
 import torch
-from contextlib import asynccontextmanager
+from pathlib import Path
 from threading import Thread
 from typing import List, Optional
 from fastapi import FastAPI, Request
@@ -32,7 +33,25 @@ app = FastAPI(title="AirLLM NVMe Optimized Server", lifespan=lifespan)
 request_queue = asyncio.Queue()
 model = None
 tokenizer = None
-MODEL_PATH = "/app/models"
+
+def _resolve_model_path() -> str:
+    """Load model path from config.json if present, else fall back to /app/models."""
+    config_path = Path("/app/config.json")
+    if config_path.exists():
+        try:
+            with config_path.open() as f:
+                cfg = json.load(f)
+            model_name = cfg.get("model_name", "")
+            if model_name:
+                logger.info(f"Config loaded: model_name={model_name}")
+                # Return the HuggingFace model identifier so transformers downloads/caches it
+                return model_name
+        except Exception as e:
+            logger.warning(f"Failed to parse config.json, falling back to /app/models: {e}")
+    logger.info("No config.json found, using default MODEL_PATH=/app/models")
+    return "/app/models"
+
+MODEL_PATH = _resolve_model_path()
 
 class ChatMessage(BaseModel):
     role: str
