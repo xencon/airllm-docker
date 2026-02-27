@@ -60,6 +60,9 @@ This will build the Docker image (if not already built) and run the container on
 ./airllm.sh start
 ```
 
+> [!WARNING]
+> **Startup Delay**: Loading a 7B model from NVMe into memory with 4-bit quantization takes **5 to 7 minutes** on consumer hardware. During this time, the API (port 11434) will refuse connections (e.g. from the Continue CLI). Use `./airllm.sh logs` and wait for the message `Application startup complete` before trying to connect.
+
 **Stop the Server:**
 ```bash
 ./airllm.sh stop
