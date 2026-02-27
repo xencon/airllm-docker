@@ -60,7 +60,13 @@ run_container() {
         $IMAGE_NAME
     if [ $? -eq 0 ]; then
         echo "✅ Container $CONTAINER_NAME is running"
-        echo "📡 Access API at http://localhost:$HOST_PORT/"
+        echo ""
+        echo "⚠️  IMPORTANT: The server is loading the 7B parameter model from NVMe into memory."
+        echo "⏳ This process takes roughly 5 to 7 minutes on consumer hardware."
+        echo "🚫 The API will NOT accept connections (e.g. from Continue CLI) until loading completes."
+        echo "🔬 Run './airllm.sh logs' and wait for: 'Application startup complete.'"
+        echo ""
+        echo "📡 Access API at http://localhost:$HOST_PORT/ once loaded."
     else
         echo "❌ Failed to start container"
         exit 1
