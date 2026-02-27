@@ -29,5 +29,4 @@ If automated PRs bypass issue-first:
 
 ## Lint Requirement
 If modifying agent-*.md, skill-*.md, or ai-report-*.md:
-Run:
-    ./scripts/check-agents.sh
+MD files are the sole governance artifacts. No external script is required.
