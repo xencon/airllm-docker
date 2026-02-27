@@ -46,6 +46,7 @@ run_container() {
     echo "🚀 Starting container $CONTAINER_NAME..."
     docker run --gpus all -d \
         --name $CONTAINER_NAME \
+        --restart unless-stopped \
         -p $HOST_PORT:$CONTAINER_PORT \
         -v $MODEL_DIR:/app/models \
         $IMAGE_NAME
@@ -80,11 +81,16 @@ case "$1" in
         stop_container
         run_container
         ;;
+    rebuild)
+        stop_container
+        build_image
+        run_container
+        ;;
     logs)
         show_logs
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|logs}"
+        echo "Usage: $0 {start|stop|restart|rebuild|logs}"
         exit 1
         ;;
 esac
