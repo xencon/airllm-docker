@@ -44,11 +44,19 @@ build_image() {
 # Function to run the container
 run_container() {
     echo "🚀 Starting container $CONTAINER_NAME..."
+    
+    CONFIG_MOUNT=""
+    if [ -f "config.json" ]; then
+        CONFIG_MOUNT="-v $(pwd)/config.json:/app/config.json:ro"
+        echo "📄 Found config.json, mounting to container"
+    fi
+    
     docker run --gpus all -d \
         --name $CONTAINER_NAME \
         --restart unless-stopped \
         -p $HOST_PORT:$CONTAINER_PORT \
         -v $MODEL_DIR:/app/models \
+        $CONFIG_MOUNT \
         $IMAGE_NAME
     if [ $? -eq 0 ]; then
         echo "✅ Container $CONTAINER_NAME is running"
