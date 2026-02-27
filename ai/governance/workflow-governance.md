@@ -11,6 +11,7 @@ All changes must follow Issue-First Development.
 - Issue and PR titles must use uppercase type in brackets: `[TYPE] Description` (e.g., `[TASK]`, `[BUG]`, `[FEATURE]`)
 - PR must reference issue
 - Matching labels between Issue and PR
+- All issues and PRs must have at least one assignee
 - Plain text formatting only (ASCII, markdown checkboxes)
 - Issue type must be Bug, Feature, or Task
 
