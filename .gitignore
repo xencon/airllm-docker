@@ -30,5 +30,6 @@ docker-compose.override.yml
 # Sensitive / config files
 config.json
 
-# Models folder structure
-models/*.safetensors
+# Models folder - ignore all model artefacts, preserve folder structure
+models/
+!models/.gitkeep
