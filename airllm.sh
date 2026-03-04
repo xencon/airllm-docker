@@ -19,6 +19,16 @@ CONTAINER_PORT=11434
 if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
     echo "⚡ NVMe RAM drive detected and populated! Using /mnt/nvme_ram for models."
     MODEL_DIR="/mnt/nvme_ram"
+    
+    # Ensure local models directory is a symlink to /mnt/nvme_ram
+    if [ ! -L "${SCRIPT_DIR}/models" ] || [ "$(readlink "${SCRIPT_DIR}/models")" != "/mnt/nvme_ram" ]; then
+        if [ -e "${SCRIPT_DIR}/models" ] || [ -L "${SCRIPT_DIR}/models" ]; then
+            echo "⚠️  Backing up existing models to models.bak..."
+            mv "${SCRIPT_DIR}/models" "${SCRIPT_DIR}/models.bak"
+        fi
+        echo "🔗 Creating symlink: ${SCRIPT_DIR}/models -> /mnt/nvme_ram"
+        ln -s /mnt/nvme_ram "${SCRIPT_DIR}/models"
+    fi
 else
     echo "🐢 Using standard local models folder."
     MODEL_DIR="${SCRIPT_DIR}/models"  # local models folder
