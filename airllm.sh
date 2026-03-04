@@ -10,29 +10,33 @@ set -o pipefail  # Catch errors in pipelines
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
 # ── Config ───────────────────────────────────────────────────────────────────
+# ── Globals ──────────────────────────────────────────────────────────────────
 IMAGE_NAME="airllm-local"
 CONTAINER_NAME="airllm-server"
 HOST_PORT=11434
 CONTAINER_PORT=11434
+MODEL_DIR=""
 
-# Check for NVMe RAM Volume
-if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
-    echo "✅ NVMe RAM drive detected and populated! Using /mnt/nvme_ram for models."
-    MODEL_DIR="/mnt/nvme_ram"
-    
-    # Ensure local models directory is a symlink to /mnt/nvme_ram
-    if [ ! -L "${SCRIPT_DIR}/models" ] || [ "$(readlink "${SCRIPT_DIR}/models")" != "/mnt/nvme_ram" ]; then
-        if [ -e "${SCRIPT_DIR}/models" ] || [ -L "${SCRIPT_DIR}/models" ]; then
-            echo "⚠️  Backing up existing models to models.bak..."
-            mv "${SCRIPT_DIR}/models" "${SCRIPT_DIR}/models.bak"
+function check_nvme() {
+    # Check for NVMe RAM Volume
+    if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
+        echo "✅ NVMe RAM drive detected and populated! Using /mnt/nvme_ram for models."
+        MODEL_DIR="/mnt/nvme_ram"
+        
+        # Ensure local models directory is a symlink to /mnt/nvme_ram
+        if [ ! -L "${SCRIPT_DIR}/models" ] || [ "$(readlink "${SCRIPT_DIR}/models")" != "/mnt/nvme_ram" ]; then
+            if [ -e "${SCRIPT_DIR}/models" ] || [ -L "${SCRIPT_DIR}/models" ]; then
+                echo "⚠️  Backing up existing models to models.bak..."
+                mv "${SCRIPT_DIR}/models" "${SCRIPT_DIR}/models.bak"
+            fi
+            echo "✅ Creating symlink: ${SCRIPT_DIR}/models -> /mnt/nvme_ram"
+            ln -s /mnt/nvme_ram "${SCRIPT_DIR}/models"
         fi
-        echo "✅ Creating symlink: ${SCRIPT_DIR}/models -> /mnt/nvme_ram"
-        ln -s /mnt/nvme_ram "${SCRIPT_DIR}/models"
+    else
+        echo "ℹ️  Using standard local models folder."
+        MODEL_DIR="${SCRIPT_DIR}/models"  # local models folder
     fi
-else
-    echo "ℹ️  Using standard local models folder."
-    MODEL_DIR="${SCRIPT_DIR}/models"  # local models folder
-fi
+}
 # ─────────────────────────────────────────────────────────────────────────────
 
 function stop_container() {
@@ -90,12 +94,20 @@ function show_logs() {
     docker logs -f "$CONTAINER_NAME"
 }
 
-# ── Script Start ─────────────────────────────────────────────────────────────
-echo "AIXCL Local - AirLLM Container Control"
+function show_status() {
+    check_nvme
+    if docker ps --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+        echo "✅ Server status: RUNNING"
+    else
+        echo "❌ Server status: NOT RUNNING"
+    fi
+}
 
+# ── Script Start ─────────────────────────────────────────────────────────────
 # Parse command line argument
 case "${1:-}" in
     start)
+        check_nvme
         stop_container
         build_image
         run_container
@@ -104,10 +116,12 @@ case "${1:-}" in
         stop_container
         ;;
     restart)
+        check_nvme
         stop_container
         run_container
         ;;
     rebuild)
+        check_nvme
         stop_container
         build_image
         run_container
@@ -115,8 +129,12 @@ case "${1:-}" in
     logs)
         show_logs
         ;;
+    status)
+        show_status
+        ;;
     *)
-        echo "Usage: $0 {start|stop|restart|rebuild|logs}" >&2
+        echo "AIXCL Local - AirLLM Container Control"
+        echo "Usage: $0 {start|stop|restart|rebuild|logs|status}" >&2
         exit 1
         ;;
 esac
