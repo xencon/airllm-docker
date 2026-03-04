@@ -5,6 +5,7 @@ import asyncio
 import torch
 from contextlib import asynccontextmanager
 from pathlib import Path
+import threading
 from threading import Thread
 from typing import List, Optional
 from fastapi import FastAPI, Request
@@ -23,8 +24,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load the model and launch the inference worker on startup."""
-    load_model()
+    """Launch the background model loader and inference worker on startup."""
+    # Start the model loading in a background thread so the API can bind immediately
+    threading.Thread(target=load_model, daemon=True).start()
     asyncio.create_task(inference_worker())
     yield
 
@@ -34,6 +36,7 @@ app = FastAPI(title="AirLLM NVMe Optimized Server", lifespan=lifespan)
 request_queue = asyncio.Queue()
 model = None
 tokenizer = None
+is_model_loaded = False
 
 def _resolve_model_path() -> str:
     """Load model path from config.json if present, else fall back to /app/models."""
@@ -93,6 +96,10 @@ def load_model():
         trust_remote_code=True
     )
     model.eval()
+    
+    global is_model_loaded
+    is_model_loaded = True
+    logger.info("Model load complete. API is now ready for inference.")
 
 # --- Background Worker ---
 async def inference_worker():
@@ -161,6 +168,22 @@ async def inference_worker():
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """OpenAI-compatible endpoint for Continue CLI."""
+    if not is_model_loaded:
+        # Return a graceful streaming response indicating the loading status
+        async def loading_stream():
+            chunk = {
+                "id": "airllm-gen",
+                "object": "chat.completion.chunk",
+                "choices": [{
+                    "delta": {"content": "⏳ Model is currently loading into memory. Please wait a few minutes and try again...\n"},
+                    "index": 0,
+                    "finish_reason": "stop"
+                }]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(loading_stream(), media_type="text/event-stream")
+
     token_queue = asyncio.Queue()
     
     # Add request to the global processing queue
