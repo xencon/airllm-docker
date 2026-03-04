@@ -1,8 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # run_airllm.sh
 # Control script to build, run, and manage AirLLM container lifecycle
 
-# --------- Config ---------
+set -e  # Exit on error
+set -u  # Treat unset variables as an error
+set -o pipefail  # Catch errors in pipelines
+
+# Get script directory early (needed for reliable paths regardless of invocation location)
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+
+# ── Config ───────────────────────────────────────────────────────────────────
 IMAGE_NAME="airllm-local"
 CONTAINER_NAME="airllm-server"
 HOST_PORT=11434
@@ -14,51 +21,47 @@ if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
     MODEL_DIR="/mnt/nvme_ram"
 else
     echo "🐢 Using standard local models folder."
-    MODEL_DIR="$(pwd)/models"  # local models folder
+    MODEL_DIR="${SCRIPT_DIR}/models"  # local models folder
 fi
-# --------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Function to stop and remove container
-stop_container() {
+function stop_container() {
     if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
         echo "🛑 Stopping running container $CONTAINER_NAME..."
-        docker stop $CONTAINER_NAME
+        docker stop "$CONTAINER_NAME" >/dev/null
     fi
     if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
         echo "🗑 Removing container $CONTAINER_NAME..."
-        docker rm $CONTAINER_NAME
+        docker rm "$CONTAINER_NAME" >/dev/null
     fi
 }
 
-# Function to build the Docker image
-build_image() {
+function build_image() {
     echo "🛠 Building Docker image $IMAGE_NAME..."
-    docker build -t $IMAGE_NAME .
-    if [ $? -ne 0 ]; then
-        echo "❌ Docker build failed!"
-        exit 1
+    if ! docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"; then
+        echo "❌ Error: Docker build failed!" >&2
+        return 1
     fi
     echo "✅ Docker image built successfully"
 }
 
-# Function to run the container
-run_container() {
+function run_container() {
     echo "🚀 Starting container $CONTAINER_NAME..."
     
-    CONFIG_MOUNT=""
-    if [ -f "config.json" ]; then
-        CONFIG_MOUNT="-v $(pwd)/config.json:/app/config.json:ro"
+    local config_args=()
+    if [ -f "${SCRIPT_DIR}/config.json" ]; then
+        config_args+=("-v" "${SCRIPT_DIR}/config.json:/app/config.json:ro")
         echo "📄 Found config.json, mounting to container"
     fi
     
-    docker run --gpus all -d \
-        --name $CONTAINER_NAME \
+    if docker run --gpus all -d \
+        --name "$CONTAINER_NAME" \
         --restart unless-stopped \
-        -p $HOST_PORT:$CONTAINER_PORT \
-        -v $MODEL_DIR:/app/models \
-        $CONFIG_MOUNT \
-        $IMAGE_NAME
-    if [ $? -eq 0 ]; then
+        -p "$HOST_PORT:$CONTAINER_PORT" \
+        -v "$MODEL_DIR:/app/models" \
+        "${config_args[@]:-}" \
+        "$IMAGE_NAME" >/dev/null; then
+        
         echo "✅ Container $CONTAINER_NAME is running"
         echo ""
         echo "⚠️  IMPORTANT: The server is loading the 7B parameter model from NVMe into memory."
@@ -68,21 +71,20 @@ run_container() {
         echo ""
         echo "📡 Access API at http://localhost:$HOST_PORT/ once loaded."
     else
-        echo "❌ Failed to start container"
-        exit 1
+        echo "❌ Error: Failed to start container" >&2
+        return 1
     fi
 }
 
-# Function to show container logs
-show_logs() {
-    docker logs -f $CONTAINER_NAME
+function show_logs() {
+    docker logs -f "$CONTAINER_NAME"
 }
 
-# -------------- Script Start --------------
+# ── Script Start ─────────────────────────────────────────────────────────────
 echo "🔹 AirLLM Container Control Script"
 
 # Parse command line argument
-case "$1" in
+case "${1:-}" in
     start)
         stop_container
         build_image
@@ -104,7 +106,7 @@ case "$1" in
         show_logs
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|rebuild|logs}"
+        echo "Usage: $0 {start|stop|restart|rebuild|logs}" >&2
         exit 1
         ;;
 esac
