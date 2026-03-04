@@ -17,7 +17,7 @@ CONTAINER_PORT=11434
 
 # Check for NVMe RAM Volume
 if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
-    echo "⚡ NVMe RAM drive detected and populated! Using /mnt/nvme_ram for models."
+    echo "✅ NVMe RAM drive detected and populated! Using /mnt/nvme_ram for models."
     MODEL_DIR="/mnt/nvme_ram"
     
     # Ensure local models directory is a symlink to /mnt/nvme_ram
@@ -26,28 +26,28 @@ if mountpoint -q /mnt/nvme_ram && [ -f "/mnt/nvme_ram/config.json" ]; then
             echo "⚠️  Backing up existing models to models.bak..."
             mv "${SCRIPT_DIR}/models" "${SCRIPT_DIR}/models.bak"
         fi
-        echo "🔗 Creating symlink: ${SCRIPT_DIR}/models -> /mnt/nvme_ram"
+        echo "✅ Creating symlink: ${SCRIPT_DIR}/models -> /mnt/nvme_ram"
         ln -s /mnt/nvme_ram "${SCRIPT_DIR}/models"
     fi
 else
-    echo "🐢 Using standard local models folder."
+    echo "ℹ️  Using standard local models folder."
     MODEL_DIR="${SCRIPT_DIR}/models"  # local models folder
 fi
 # ─────────────────────────────────────────────────────────────────────────────
 
 function stop_container() {
     if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
-        echo "🛑 Stopping running container $CONTAINER_NAME..."
+        echo "ℹ️  Stopping running container $CONTAINER_NAME..."
         docker stop "$CONTAINER_NAME" >/dev/null
     fi
     if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
-        echo "🗑 Removing container $CONTAINER_NAME..."
+        echo "ℹ️  Removing container $CONTAINER_NAME..."
         docker rm "$CONTAINER_NAME" >/dev/null
     fi
 }
 
 function build_image() {
-    echo "🛠 Building Docker image $IMAGE_NAME..."
+    echo "ℹ️  Building Docker image $IMAGE_NAME..."
     if ! docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"; then
         echo "❌ Error: Docker build failed!" >&2
         return 1
@@ -56,12 +56,12 @@ function build_image() {
 }
 
 function run_container() {
-    echo "🚀 Starting container $CONTAINER_NAME..."
+    echo "ℹ️  Starting container $CONTAINER_NAME..."
     
     local config_args=()
     if [ -f "${SCRIPT_DIR}/config.json" ]; then
         config_args+=("-v" "${SCRIPT_DIR}/config.json:/app/config.json:ro")
-        echo "📄 Found config.json, mounting to container"
+        echo "✅ Found config.json, mounting to container"
     fi
     
     if docker run --gpus all -d \
@@ -75,11 +75,11 @@ function run_container() {
         echo "✅ Container $CONTAINER_NAME is running"
         echo ""
         echo "⚠️  IMPORTANT: The server is loading the 7B parameter model from NVMe into memory."
-        echo "⏳ This process takes roughly 5 to 7 minutes on consumer hardware."
-        echo "🚫 The API will NOT accept connections (e.g. from Continue CLI) until loading completes."
-        echo "🔬 Run './airllm.sh logs' and wait for: 'Application startup complete.'"
+        echo "ℹ️  This process takes roughly 5 to 7 minutes on consumer hardware."
+        echo "ℹ️  The API will NOT accept connections (e.g. from Continue CLI) until loading completes."
+        echo "ℹ️  Run './airllm.sh logs' and wait for: 'Application startup complete.'"
         echo ""
-        echo "📡 Access API at http://localhost:$HOST_PORT/ once loaded."
+        echo "✅ Access API at http://localhost:$HOST_PORT/ once loaded."
     else
         echo "❌ Error: Failed to start container" >&2
         return 1
@@ -91,7 +91,7 @@ function show_logs() {
 }
 
 # ── Script Start ─────────────────────────────────────────────────────────────
-echo "🔹 AirLLM Container Control Script"
+echo "AIXCL Local - AirLLM Container Control"
 
 # Parse command line argument
 case "${1:-}" in
