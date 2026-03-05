@@ -6,9 +6,10 @@ This repository is specifically tailored to run on consumer hardware while provi
 
 ## Features
 
-- **OpenAI-Compatible API**: Streaming endpoint (`/v1/chat/completions`) ready for drop-in integration with various UIs and CLI tools.
+- **OpenAI-Compatible API**: Streaming endpoint (`/v1/chat/completions`) and models list (`/v1/models`) ready for drop-in integration with various UIs and CLI tools.
 - **NVMe Layer Swapping Supported**: Built-in support for blazing-fast model inference using NVMe RAM drives when massive models won't fit entirely in simple GPU VRAM.
 - **Optimized for Consumer Hardware**: Built-in environment optimizations including BitsAndBytes (`nf4`), Flash Attention 2 (where supported), and OMP CPU pre-fetching logic.
+- **Graceful Loading**: API responds immediately on startup with a loading notice while the model initialises in the background — no connection refused errors.
 
 ## Prerequisites
 
@@ -54,29 +55,17 @@ Place your `config.json` inside `/mnt/nvme_ram`. When starting the server, if th
 
 Use the provided `airllm.sh` control script to manage the container lifecycle.
 
-**Start the Server:**
-This will build the Docker image (if not already built) and run the container on port 11434.
-```bash
-./airllm.sh start
-```
+| Command | Description |
+|---|---|
+| `./airllm.sh start` | Build image (if needed) and start the container |
+| `./airllm.sh stop` | Stop and remove the running container |
+| `./airllm.sh restart` | Stop and restart without rebuilding the image |
+| `./airllm.sh rebuild` | Stop, rebuild the image, and restart |
+| `./airllm.sh logs` | Follow live container logs |
+| `./airllm.sh status` | Check NVMe mount and container running state |
 
 > [!WARNING]
 > **Startup Delay**: Loading a 7B model from NVMe into memory with 4-bit quantization takes **5 to 7 minutes** on consumer hardware. During this time, the API (port 11434) will refuse connections (e.g. from the Continue CLI). Use `./airllm.sh logs` and wait for the message `Application startup complete` before trying to connect.
-
-**Stop the Server:**
-```bash
-./airllm.sh stop
-```
-
-**Restart the Server:**
-```bash
-./airllm.sh restart
-```
-
-**Follow Server Logs:**
-```bash
-./airllm.sh logs
-```
 
 ## Continue CLI Integration
 
