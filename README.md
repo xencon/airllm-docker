@@ -99,5 +99,5 @@ To connect the Continue CLI to your AirLLM server, create or modify your `~/.con
 Now you can run the CLI tool and use your locally hosted LLM!
 
 ```bash
-continue
+cn --config ~/.continue/config.yaml
 ```
